@@ -1,4 +1,4 @@
-import { appendMediaToMessage, extension_prompt_types, getRequestHeaders, saveSettingsDebounced, setExtensionPrompt, substituteParamsExtended, name2 } from '../../../../script.js';
+import { appendMediaToMessage, extension_prompt_types, getRequestHeaders, saveSettingsDebounced, setExtensionPrompt, substituteParamsExtended, name2, generateQuietPrompt } from '../../../../script.js';
 import { appendFileContent, uploadFileAttachment } from '../../../chats.js';
 import { doExtrasFetch, extension_settings, getApiUrl, getContext, modules, renderExtensionTemplateAsync } from '../../../extensions.js';
 import { registerDebugFunction } from '../../../power-user.js';
@@ -11,6 +11,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 import { commonEnumProviders } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { localforage } from '../../../../lib.js';
 import { textgen_types, textgenerationwebui_settings } from '../../../textgen-settings.js';
+
 
 const storage = localforage.createInstance({ name: 'SillyTavern_WebSearch' });
 const extensionPromptMarker = '___WebSearch___';
@@ -140,7 +141,7 @@ function createRegexRule() {
 async function renderRegexRules() {
     $('#websearch_regex_list').empty();
     for (const rule of extension_settings.websearch.regex) {
-        const template = $(await renderExtensionTemplateAsync('third-party/Extension-WebSearch', 'regex'));
+        const template = $(await renderExtensionTemplateAsync('third-party/Extension-WebSearch-Multi-Auto-Query', 'regex'));
         template.find('.websearch_regex_pattern').val(rule.pattern).on('input', function () {
             rule.pattern = String($(this).val());
             saveSettingsDebounced();
@@ -252,26 +253,16 @@ async function onWebSearchPrompt(chat, _maxContext, _abort, type) {
         // Find the latest user message
         let searchQuery = '';
         let triggerMessage = null;
+        console.log('WebSearch: chat', chat);
 
-        for (const message of chat.slice().reverse()) {
-            if (message.is_system) {
-                continue;
-            }
+        const lastMessage = chat[chat.length - 1];
 
-            if (message.mes && message.is_user) {
-                if (isBreakCondition(message.mes)) {
-                    break;
-                }
+        if (lastMessage && lastMessage.mes && lastMessage.is_user) {
+            const query = extractSearchQuery(lastMessage.mes);
 
-                const query = extractSearchQuery(message.mes);
-
-                if (!query) {
-                    continue;
-                }
-
+            if (query) {
                 searchQuery = query;
-                triggerMessage = message;
-                break;
+                triggerMessage = lastMessage;
             }
         }
 
@@ -280,7 +271,80 @@ async function onWebSearchPrompt(chat, _maxContext, _abort, type) {
             return;
         }
 
-        const { text, links, images } = await performSearchRequest(searchQuery, { useCache: true });
+
+        //Get the last few messages from the chat history
+        let MessageHistory = chat.slice()
+            .reverse()
+            .filter(message => !message.is_system)
+            .slice(0, 3)
+            .map(message => {
+                let mes = message.mes.replace(/<think>/g, '').replace(/<\/think>/g, '');
+                return message.name + ": " + mes;
+            })
+            .join('\n');
+        console.log("WebSearch: MessageHistory", MessageHistory);
+        // Expand the query using generateQuietPrompt
+        const taskPrompt = `### Task:
+Analyze the chat history to determine the necessity of generating search queries, in the given language. By default, **prioritize generating 1-3 broad and relevant search queries** unless it is absolutely certain that no additional information is required. The aim is to retrieve comprehensive, updated, and valuable information even with minimal uncertainty. If no search is unequivocally needed, return an empty list.
+
+### Guidelines:
+- Respond **EXCLUSIVELY** with a JSON object. Any form of extra commentary, explanation, or additional text is strictly prohibited.
+- When generating search queries, respond in the format: { "queries": ["query1", "query2"] }, ensuring each query is distinct, concise, and relevant to the topic.
+- If and only if it is entirely certain that no useful results can be retrieved by a search, return: { "queries": [] }.
+- Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
+- Be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
+- Today's date is: {{date}}.
+- Always prioritize providing actionable and broad queries that maximize informational coverage.
+
+### Output:
+### Output:
+Strictly return in JSON format: 
+{
+  "queries": ["query1", "query2"]
+}
+  
+### Chat History/Search Query:
+<chat_history>
+` + MessageHistory + `
+</chat_history>`
+
+        const taskResponse = await generateQuietPrompt(taskPrompt, false, false);
+        console.log(`WebSearch: task response type:`, typeof taskResponse, taskResponse);
+        let parsedTaskResponse;
+        // Strip of think tags and other non-json content
+        let jsonString = taskResponse.replace(/<think>/g, '').replace(/<\/think>/g, '');
+        try {
+            parsedTaskResponse = JSON.parse(jsonString);
+        } catch (error) {
+            console.error("WebSearch: Error parsing taskResponse as JSON", error);
+            parsedTaskResponse = { queries: [searchQuery] }; // Default to original captured query on error
+        }
+
+        let allText = "";
+        let allLinks = [];
+        let allImages = [];
+
+        if (parsedTaskResponse && parsedTaskResponse.queries && Array.isArray(parsedTaskResponse.queries)) {
+            for (const query of parsedTaskResponse.queries) {
+                const { text, links, images } = await performSearchRequest(query, { useCache: true });
+                allText += text + "\n"; // Append text with a newline separator
+                allLinks = allLinks.concat(links); // Concatenate links arrays
+                allImages = allImages.concat(images); // Concatenate images arrays
+                console.log('WebSearch: Multi Query: allText', allText, 'allLinks', allLinks, 'allImages', allImages);
+            }
+        } else {
+            // If taskResponse doesn't have the expected format, handle it as a single query
+            const { text, links, images } = await performSearchRequest(parsedTaskResponse, { useCache: true });
+            allText = text;
+            allLinks = links;
+            allImages = images;
+            console.log('WebSearch: Single Query:  allText', allText, 'allLinks', allLinks, 'allImages', allImages);
+        }
+
+        //const { text, links, images } = await performSearchRequest(searchQuery, { useCache: true });
+        const text = allText;
+        const links = allLinks;
+        const images = allImages;
 
         if (!text) {
             console.debug('WebSearch: search failed');
@@ -290,7 +354,7 @@ async function onWebSearchPrompt(chat, _maxContext, _abort, type) {
         const hasVisitTargets = (Array.isArray(links) && links.length > 0) || (Array.isArray(images) && images.length > 0);
         if (extension_settings.websearch.visit_enabled && triggerMessage && hasVisitTargets) {
             const messageId = Number(triggerMessage.index);
-            const visitResult = await visitLinksAndAttachToMessage(searchQuery, links, images, messageId);
+            const visitResult = await visitLinksAndAttachToMessage(parsedTaskResponse.queries[0], links, images, messageId);
 
             if (visitResult && visitResult.file) {
                 triggerMessage.extra = Object.assign((triggerMessage.extra || {}), { file: visitResult.file });
@@ -311,7 +375,7 @@ async function onWebSearchPrompt(chat, _maxContext, _abort, type) {
             template += '\n{{text}}';
         }
 
-        const extensionPrompt = substituteParamsExtended(template, { text: text, query: searchQuery });
+        const extensionPrompt = substituteParamsExtended(template, { text: text, query: parsedTaskResponse.queries[0] });
         setExtensionPrompt(extensionPromptMarker, extensionPrompt, extension_settings.websearch.position, extension_settings.websearch.depth);
         console.log('WebSearch: prompt updated', extensionPrompt);
     } catch (error) {
@@ -1320,7 +1384,7 @@ class WebSearchScraper {
      */
     async scrape() {
         try {
-            const template = $(await renderExtensionTemplateAsync('third-party/Extension-WebSearch', 'search-scrape', {}));
+            const template = $(await renderExtensionTemplateAsync('third-party/Extension-WebSearch-Multi-Auto-Query', 'search-scrape', {}));
             let query = '';
             let maxResults = extension_settings.websearch.visit_count;
             let output = 'multiple';
@@ -1548,7 +1612,7 @@ jQuery(async () => {
         }
     }
 
-    const html = await renderExtensionTemplateAsync('third-party/Extension-WebSearch', 'settings');
+    const html = await renderExtensionTemplateAsync('third-party/Extension-WebSearch-Multi-Auto-Query', 'settings');
 
     function switchSourceSettings() {
         $('#websearch_extras_settings').toggle(extension_settings.websearch.source === WEBSEARCH_SOURCES.EXTRAS || extension_settings.websearch.source === WEBSEARCH_SOURCES.PLUGIN);
