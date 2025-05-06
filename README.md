@@ -1,4 +1,16 @@
-# Extension-WebSearch
+# Extension-WebSearch-Multi-Auto-Query
+# WebSearch_Extension
+# This is a fork from OFFICIAL https://github.com/SillyTavern/Extension-WebSearch
+# This is just my own attempt at adding in functionality for fun and personal ideas. You may down to try if you want to.
+
+
+- Trying out functionality to have the LLM "expand" the search query based on your last few message history (only NON function based call).
+- It will run the generateQuietPrompt function from ST and pass in the task prompt, whereby it would spit out(hopefully) a JSON formatted response of queries.
+- Each of these queries will run through a loop to go through the searches.
+- It will append all of these searches. Duplication may happen though since it could be scraping from the few same websites from multiple queries. 
+
+===========================================================================================================================================
+
 
 Add web search results to LLM prompts.
 
