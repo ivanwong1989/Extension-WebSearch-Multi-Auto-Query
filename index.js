@@ -4,7 +4,7 @@ import { doExtrasFetch, extension_settings, getApiUrl, getContext, modules, rend
 import { registerDebugFunction } from '../../../power-user.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '../../../secrets.js';
 import { POPUP_RESULT, POPUP_TYPE, callGenericPopup } from '../../../popup.js';
-import { extractTextFromHTML, isFalseBoolean, isTrueBoolean, onlyUnique, trimToEndSentence, trimToStartSentence, getStringHash, regexFromString, isDataURL, bufferToBase64, saveBase64AsFile } from '../../../utils.js';
+import { extractTextFromHTML, isFalseBoolean, isTrueBoolean, onlyUnique, trimToEndSentence, trimToStartSentence, getStringHash, regexFromString, isDataURL, bufferToBase64, saveBase64AsFile, getReadableText } from '../../../utils.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
@@ -774,12 +774,19 @@ async function visitLink(link) {
 
         const data = await result.blob();
         console.log('WebSearch: visit result data raw', data);
-        const text = await extractTextFromHTML(data, 'p'); // Only extract text from <p> tags
+        const text = await extractTextFromHTMLExpanded(data);
         console.log('WebSearch: visit result', link, text);
         return { link, text };
     } catch (error) {
         console.error('WebSearch: visit failed', error);
     }
+}
+
+async function extractTextFromHTMLExpanded(blob, textSelector = 'p, h1, h2, h3, h4, h5, h6, li, td') {
+    const html = await blob.text();
+    const domParser = new DOMParser();
+    const document = domParser.parseFromString(DOMPurify.sanitize(html), 'text/html');
+    return await getReadableText(document, textSelector);
 }
 
 /**
