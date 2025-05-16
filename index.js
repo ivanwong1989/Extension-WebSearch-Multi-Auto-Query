@@ -11,6 +11,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '
 import { commonEnumProviders } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { localforage } from '../../../../lib.js';
 import { textgen_types, textgenerationwebui_settings } from '../../../textgen-settings.js';
+import { isProbablyReaderable, Readability } from '@mozilla/readability';
 
 
 const storage = localforage.createInstance({ name: 'SillyTavern_WebSearch' });
