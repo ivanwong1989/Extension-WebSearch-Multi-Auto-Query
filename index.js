@@ -9,9 +9,8 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { commonEnumProviders } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
-import { localforage } from '../../../../lib.js';
+import { localforage, isProbablyReaderable, Readability } from '../../../../lib.js';
 import { textgen_types, textgenerationwebui_settings } from '../../../textgen-settings.js';
-import { isProbablyReaderable, Readability } from '@mozilla/readability';
 
 
 const storage = localforage.createInstance({ name: 'SillyTavern_WebSearch' });
