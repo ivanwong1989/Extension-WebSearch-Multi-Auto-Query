@@ -773,6 +773,7 @@ async function visitLink(link) {
         }
 
         const data = await result.blob();
+        console.log('WebSearch: visit result data raw', data);
         const text = await extractTextFromHTML(data, 'p'); // Only extract text from <p> tags
         console.log('WebSearch: visit result', link, text);
         return { link, text };
