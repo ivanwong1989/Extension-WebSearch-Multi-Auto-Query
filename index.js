@@ -786,7 +786,49 @@ async function extractTextFromHTMLExpanded(blob, textSelector = 'p, h1, h2, h3, 
     const html = await blob.text();
     const domParser = new DOMParser();
     const document = domParser.parseFromString(DOMPurify.sanitize(html), 'text/html');
-    return await getReadableText(document, textSelector);
+    return await getReadableTextExpanded(document, textSelector);
+}
+
+async function getReadableTextExpanded(document, textSelector = 'body') {
+    if (isProbablyReaderable(document)) {
+        const parser = new Readability(document);
+        const article = parser.parse();
+        return postProcessText(article.textContent, false);
+    }
+
+    const elements = document.querySelectorAll(textSelector);
+    const rawText = Array.from(elements).map(e => e.textContent).join('\n');
+    const text = postProcessText(rawText);
+    return text;
+}
+
+function postProcessText(text, collapse = true) {
+    // Remove carriage returns
+    text = text.replace(/\r/g, '');
+    // Replace tabs with spaces
+    text = text.replace(/\t/g, ' ');
+    // Normalize unicode spaces
+    text = text.replace(/\u00A0/g, ' ');
+    // Collapse multiple newlines into one
+    if (collapse) {
+        text = collapseNewlines(text);
+        // Trim leading and trailing whitespace, and remove empty lines
+        text = text.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+    } else {
+        // Replace more than 4 newlines with 4 newlines
+        text = text.replace(/\n{4,}/g, '\n\n\n\n');
+        // Trim lines that contain nothing but whitespace
+        text = text.split('\n').map(l => /^\s+$/.test(l) ? '' : l).join('\n');
+    }
+    // Collapse multiple spaces into one (except for newlines)
+    text = text.replace(/ {2,}/g, ' ');
+    // Remove leading and trailing spaces
+    text = text.trim();
+    return text;
+}
+
+function collapseNewlines(x) {
+    return x.replaceAll(/\n+/g, '\n');
 }
 
 /**
