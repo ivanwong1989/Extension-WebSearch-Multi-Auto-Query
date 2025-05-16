@@ -544,6 +544,7 @@ async function visitLinks(query, links) {
 
     for (let i = 0; i < Math.min(visitCount, links.length); i++) {
         const link = links[i];
+        console.log('WebSearch: visiting link', link);
         visitPromises.push(visitLink(link));
     }
 
@@ -767,13 +768,13 @@ async function visitLink(link) {
         });
 
         if (!result.ok) {
-            console.debug(`WebSearch: visit request failed with status ${result.statusText}`, link);
+            console.log(`WebSearch: visit request failed with status ${result.statusText}`, link);
             return;
         }
 
         const data = await result.blob();
         const text = await extractTextFromHTML(data, 'p'); // Only extract text from <p> tags
-        console.debug('WebSearch: visit result', link, text);
+        console.log('WebSearch: visit result', link, text);
         return { link, text };
     } catch (error) {
         console.error('WebSearch: visit failed', error);
