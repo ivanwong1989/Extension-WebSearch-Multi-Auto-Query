@@ -353,6 +353,7 @@ Strictly return in JSON format:
 
         const hasVisitTargets = (Array.isArray(links) && links.length > 0) || (Array.isArray(images) && images.length > 0);
         if (extension_settings.websearch.visit_enabled && triggerMessage && hasVisitTargets) {
+            console.log('WebSearch: visiting links and attaching to message');
             const messageId = Number(triggerMessage.index);
             const visitResult = await visitLinksAndAttachToMessage(parsedTaskResponse.queries[0], links, images, messageId);
 
@@ -652,6 +653,8 @@ async function visitLinksAndAttachToMessage(query, links, images, messageId) {
         }
 
         if (extension_settings.websearch.visit_target === VISIT_TARGETS.DATA_BANK) {
+            console.log('WebSearch: uploading to Data Bank');
+            console.log('WebSearch: file text', fileText);
             await uploadToDataBank(fileName, fileText);
         } else {
             const base64Data = window.btoa(unescape(encodeURIComponent(fileText)));
